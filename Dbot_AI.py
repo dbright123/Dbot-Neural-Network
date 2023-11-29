@@ -28,7 +28,7 @@ def r_squared(y_true, y_pred):
 
 lot = 0.01
 
-target_market = ["AUDUSD","EURUSD","GBPUSD","USDCAD","USDCHF","XAUUSD","NZDUSD"] #list of market
+target_market = ["AUDUSD","EURUSD","GBPUSD","USDCAD","USDCHF","NZDUSD"] #list of market
 #loading market model and standard scaler
 models = []
 sc_xs = []
