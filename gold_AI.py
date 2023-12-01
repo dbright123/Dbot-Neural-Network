@@ -11,20 +11,11 @@ print("MetaTrader5 package author: ",mt5.__author__)
 print("MetaTrader5 package version: ",mt5.__version__)
 
 def r_squared(y_true, y_pred):
-  """Calculates the R-squared score.
-
-  Args:
-    y_true: The ground truth values.
-    y_pred: The predicted values.
-
-  Returns:
-    The R-squared score.
-  """
-
   mean_y_true = np.mean(y_true)
   ss_tot = np.sum((y_true - mean_y_true)**2)
   ss_res = np.sum((y_true - y_pred)**2)
   r_squared = 1 - ss_res / ss_tot
+  
   return r_squared
 
 lot = 0.01
@@ -35,7 +26,7 @@ model = load_model(market+".keras")
 sc_x = joblib.load(market+" sc_x.joblib")
 sc_y = joblib.load(market+" sc_y.joblib")
 
-
+tf = mt5.TIMEFRAME_M15
 if not mt5.initialize():
     print('Initialization failed, check internet connection. You must have Meta Trader 5 installed.')
 else: 
@@ -50,7 +41,7 @@ else:
             print(account.equity)
             print("AI is functional loading "+market)
             
-            rates = mt5.copy_rates_from_pos(market, mt5.TIMEFRAME_M5, 0, 500)
+            rates = mt5.copy_rates_from_pos(market, tf, 0, 500)
             #print(rates)
             print(rates.shape)
             data = []
@@ -76,13 +67,13 @@ else:
             print("stage 1")
             print(score, " is the current prediction model performance")
 
-            if(score <= 0.90):
-                print(market[n]+" will need re-training, please train the model again or check program for error, the prediction is too poor")
+            if(score <= 0.60):
+                print(market+" will need re-training, please train the model again or check program for error, the prediction is too poor")
                 print("checking other market")
 
                 time.sleep(10)
             else:
-                rates = mt5.copy_rates_from_pos(market[n], mt5.TIMEFRAME_M5, 0, 1)
+                rates = mt5.copy_rates_from_pos(market, tf, 0, 1)
                 print(rates)
                 data=[[rates[0][1],rates[0][5]]]
                 close_price = [rates[0][4]]
@@ -112,7 +103,8 @@ else:
                 print("Hour:", hour,": Minute:", mins)
 
                 allow_trade = True
-                    
+                if(mins > 30): allow_trade = False
+                else: allow_trade = True    
                 #Starting trade operation
         
                 symbol = market
@@ -141,12 +133,12 @@ else:
                         "type": mt5.ORDER_TYPE_BUY,
                         "price": price,
                         "sl": 0.0,
-                        "tp": y_pred[0],
-                        "deviation": 20,
+                        "tp": 0.0,
+                        "deviation": 8,
                         "magic": 0,
                         "comment": "Dbot_ML",
                         "type_time": mt5.ORDER_TIME_GTC,
-                        #"type_filling": mt5.ORDER_FILLING_RETURN,
+                       
                     }
                     permit_trade = True
                 elif(y_pred[0] < price):
@@ -159,12 +151,12 @@ else:
                         "type": mt5.ORDER_TYPE_SELL,
                         "price": price,
                         "sl": 0.0,
-                        "tp": y_pred[0],
-                        "deviation": 20,
+                        "tp": 0.0,
+                        "deviation": 8,
                         "magic": 0,
                         "comment": "Dbot_ML",
                         "type_time": mt5.ORDER_TIME_GTC,
-                        #"type_filling": mt5.ORDER_FILLING_RETURN,
+                        
                     }
                     permit_trade = True
 
@@ -196,21 +188,6 @@ else:
                                 target_order = order_symbol
                                 print(target_order)
                                 print("Stage 3")
-                                ## Auto stoploss 
-                                if(target_order.profit >= target_order.volume * 200  and target_order.sl == 0):
-                                    #modify the market
-                                    sl = target_order.price_current + target_order.price_open
-                                    sl = sl/2
-                                    request = {
-                                        "action": mt5.TRADE_ACTION_SLTP,
-                                        "symbol": target_order.symbol,
-                                        "sl": sl,
-                                        "tp": target_order.tp,
-                                        "position": target_order.ticket
-                                    }
-                                    result=mt5.order_send(request)
-                                    print(result)
-
                                 o_price = target_order.price_open
                                 c_price = target_order.price_current
                                 profit = target_order.profit
@@ -243,54 +220,30 @@ else:
                 close_trade = False
                 #current stage
                 if(modify_trade):
-                    #modify the market
-                    if(target_order.sl != 0):
-                        sl = target_order.sl
-                    
-                    request = {
-                        "action": mt5.TRADE_ACTION_SLTP,
-                        "symbol": target_order.symbol,
-                        "sl": sl,
-                        "tp": y_pred[0],
-                        "position": target_order.ticket
-                    }
-
                     price = mt5.symbol_info_tick(symbol).bid
                     close_trade = False
+
                     if(target_order.type == 0):
-                        if(y_pred[0] > price and y_pred[0] != target_order.tp):
-                            result=mt5.order_send(request)
-                            print(result)
-                        elif(y_pred[0] < price):
+                        if(y_pred[0] < price and mins > 30):
                             result = mt5.Close(target_order.symbol,ticket=target_order.ticket)
                             print(result)
+
                     elif(target_order.type == 1):
-                        if(y_pred[0] < price and y_pred[0] != target_order.tp):
-                            result=mt5.order_send(request)
-                            print(result)
-                        elif(y_pred[0] > price):
+                        if(y_pred[0] > price and mins > 30):
                             result = mt5.Close(target_order.symbol,ticket=target_order.ticket)
                             print(result)
-                            
-                    elif(target_order.profit > 0.05):
+
+                    if(target_order.profit > 0.50):
                         result = mt5.Close(target_order.symbol,ticket=target_order.ticket)
                         print(result)
-                        
-
-                if(n < len(market) - 1):
-                    n += 1
-                else:
-                    n = 0
 
                 print("Stage 5")
-
                 print(mt5.last_error())
-                
-                time.sleep(20)
+                time.sleep(5)
             
         else:
             print("Please make sure metatrade 5 has internet and algo Trade is Turn On")
-            time.sleep(20)
+            time.sleep(5)
     
 mt5.shutdown()
 quit()
